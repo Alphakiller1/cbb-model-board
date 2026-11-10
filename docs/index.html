@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Chase Analytics men's college basketball score projections by slate date.">
+  <title>CBB Model Dashboard | Chase Analytics</title>
+  <link rel="stylesheet" href="./dashboard.css">
+  <script type="module" src="./dashboard.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="shell header-content">
+      <a class="brand" href="https://chase-analytics.com/">
+        <span class="brand-mark" aria-hidden="true">CA</span> Chase Analytics
+      </a>
+      <a class="header-link" href="https://chase-analytics.com/cbb/">CBB matchup desk <span aria-hidden="true">↗</span></a>
+    </div>
+  </header>
+
+  <main class="shell">
+    <section class="hero" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">Men’s Division I · Score model</p>
+        <h1 id="page-title">CBB Model<br class="hero-break"> Dashboard</h1>
+        <p class="hero-description">Projected scores, totals and margins for the upcoming college basketball slate.</p>
+      </div>
+      <dl class="snapshot">
+        <div><dt>Model snapshot</dt><dd id="snapshot-date">—</dd></div>
+        <div><dt>Training data through</dt><dd id="training-date">—</dd></div>
+        <div><dt>Forecasts generated</dt><dd id="generated-time">—</dd></div>
+      </dl>
+    </section>
+
+    <section class="board" aria-labelledby="board-title">
+      <div class="board-heading">
+        <h2 id="board-title">Game projections</h2>
+        <p id="board-status" role="status">Loading the published score feed…</p>
+      </div>
+      <noscript><p>Enable JavaScript to view the published score feed.</p></noscript>
+
+      <fieldset class="filters" id="filters" disabled>
+        <legend class="sr-only">Filter game projections</legend>
+        <label for="slate-date">Slate date
+          <select id="slate-date"></select>
+        </label>
+        <label for="team-search">Find a team
+          <input id="team-search" type="search" placeholder="Search by school or team name" autocomplete="off">
+        </label>
+        <label for="sort-order">Sort by
+          <select id="sort-order">
+            <option value="time">Tip time</option>
+            <option value="margin">Largest model margin</option>
+            <option value="total">Highest projected total</option>
+          </select>
+        </label>
+      </fieldset>
+
+      <div class="games" id="games"></div>
+    </section>
+  </main>
+
+  <footer class="shell site-footer">
+    <p id="method-note">Chase Analytics college basketball score model</p>
+    <a href="https://github.com/Alphakiller1/cbb-model-board">Published score feed <span aria-hidden="true">↗</span></a>
+  </footer>
+
+  <template id="game-card">
+    <article class="game">
+      <time class="tip"></time>
+      <h3 class="sr-only"></h3>
+      <div class="teams">
+        <div class="team" data-side="away">
+          <div class="logo"><img alt="" width="34" height="34" loading="lazy" decoding="async"></div>
+          <div><div class="team-name"></div><div class="team-record"></div></div>
+          <strong class="score"></strong>
+        </div>
+        <div class="team" data-side="home">
+          <div class="logo"><img alt="" width="34" height="34" loading="lazy" decoding="async"></div>
+          <div><div class="team-name"></div><div class="team-record"></div></div>
+          <strong class="score"></strong>
+        </div>
+      </div>
+      <dl class="game-summary">
+        <div><dt>Projected total</dt><dd class="total"></dd></div>
+        <div><dt>Model margin</dt><dd class="margin"></dd></div>
+      </dl>
+      <a class="matchup-link">Explore matchup <span aria-hidden="true">↗</span></a>
+    </article>
+  </template>
+</body>
+</html>
