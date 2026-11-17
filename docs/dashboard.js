@@ -5,6 +5,7 @@ const dateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZ
 const timeFormat = new Intl.DateTimeFormat("en-US", {
   hour: "numeric", minute: "2-digit", timeZone: eastern, timeZoneName: "short",
 });
+const tierRank = { max: 3, strong: 2, lean: 1 };
 
 const filters = document.getElementById("filters");
 const dateSelect = document.getElementById("slate-date");
@@ -16,6 +17,40 @@ const template = document.getElementById("game-card");
 
 function slateLabel(date) {
   return slateFormat.format(new Date(`${date}T12:00:00Z`));
+}
+
+const finite = (n) => typeof n === "number" && Number.isFinite(n);
+const signed = (n, digits = 1) => (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n).toFixed(digits);
+const spreadText = (team, line) => `${team} ${line === 0 ? "PK" : signed(line)}`;
+const pct = (p) => `${(p * 100).toFixed(1)}%`;
+
+function cell(row, text, className) {
+  const td = document.createElement("td");
+  if (className) td.className = className;
+  td.textContent = text;
+  row.append(td);
+  return td;
+}
+
+function pill(text, kind) {
+  const span = document.createElement("span");
+  span.className = `pill pill-${kind}`;
+  span.textContent = text;
+  return span;
+}
+
+// Spread edge values are the home team's spread (negative = home favored).
+function edgeBet(game, kind, edge) {
+  if (kind === "total") return `${edge.side === "over" ? "Over" : "Under"} ${edge.opener.toFixed(1)}`;
+  return edge.side === "home" ? spreadText(game.home, edge.opener) : spreadText(game.away, -edge.opener);
+}
+
+function edgeLine(game, kind, value) {
+  return kind === "total" ? value.toFixed(1) : spreadText(game.home, value);
+}
+
+function bestEdge(game) {
+  return Object.values(game.edges || {}).reduce((best, edge) => Math.max(best, edge.tier ? edge.probability : 0), 0);
 }
 
 function renderTeam(card, game, side) {
@@ -32,6 +67,35 @@ function renderTeam(card, game, side) {
   row.querySelector(".score").setAttribute("aria-label", `Projected score ${score}`);
 }
 
+function renderLines(card, game) {
+  const lines = card.querySelector(".lines");
+  const market = game.market || {};
+  const modelSpread = -game.model_margin;
+  if (!finite(market.home_spread) && !finite(market.total)) return;
+  lines.hidden = false;
+  card.querySelector(".line-market").textContent = finite(market.home_spread) ? `DK ${spreadText(game.home, market.home_spread)}` : "DK —";
+  card.querySelector(".line-model").textContent = `Model ${spreadText(game.home, Math.round(modelSpread * 2) / 2)}`;
+  card.querySelector(".total-market").textContent = finite(market.total) ? `DK ${market.total.toFixed(1)}` : "DK —";
+  card.querySelector(".total-model").textContent = `Model ${game.projected_total.toFixed(1)}`;
+
+  const flags = card.querySelector(".edge-flags");
+  for (const kind of ["spread", "total"]) {
+    const edge = (game.edges || {})[kind];
+    if (!edge) continue;
+    if (edge.tier) {
+      const flag = document.createElement("span");
+      flag.className = "edge-flag";
+      flag.append(pill(edge.tier, edge.tier), ` ${edgeBet(game, kind, edge)} · ${pct(edge.probability)}`);
+      flags.append(flag);
+    } else if (edge.line_moved && finite(edge.current)) {
+      const moved = document.createElement("span");
+      moved.className = `edge-move ${edge.move_toward_model ? "toward" : "away"}`;
+      moved.textContent = `${kind === "spread" ? "Spread" : "Total"} moved ${edgeLine(game, kind, edge.opener)} → ${edgeLine(game, kind, edge.current)}, ${edge.move_toward_model ? "toward" : "away from"} the model`;
+      flags.append(moved);
+    }
+  }
+}
+
 function renderGame(game) {
   const card = template.content.cloneNode(true);
   const tip = card.querySelector("time");
@@ -45,6 +109,7 @@ function renderGame(game) {
   const margin = Math.abs(game.model_margin).toFixed(1);
   const leader = game.model_margin > 0 ? game.home : game.away;
   card.querySelector(".margin").textContent = margin === "0.0" ? "Even" : `${leader} by ${margin}`;
+  renderLines(card, game);
 
   const link = card.querySelector(".matchup-link");
   const matchupUrl = new URL("https://chase-analytics.com/cbb/matchup.html");
@@ -52,6 +117,75 @@ function renderGame(game) {
   link.href = matchupUrl.href;
   link.setAttribute("aria-label", `Explore ${game.away_name} at ${game.home_name}`);
   return card;
+}
+
+function renderWeakLines(slateGames) {
+  const section = document.getElementById("weak-lines");
+  const body = document.getElementById("weak-rows");
+  const empty = document.getElementById("weak-empty");
+  const flagged = [];
+  for (const game of slateGames) {
+    for (const [kind, edge] of Object.entries(game.edges || {})) {
+      if (edge.tier) flagged.push({ game, kind, edge });
+    }
+  }
+  flagged.sort((a, b) => b.edge.probability - a.edge.probability);
+  body.replaceChildren(...flagged.map(({ game, kind, edge }) => {
+    const row = document.createElement("tr");
+    cell(row, timeFormat.format(new Date(game.kickoff_utc)), "nowrap col-tip");
+    cell(row, `${game.away} at ${game.home}`, "game-cell");
+    cell(row, edgeBet(game, kind, edge), "strong nowrap");
+    cell(row, edgeLine(game, kind, edge.opener), "nowrap");
+    cell(row, edgeLine(game, kind, kind === "spread" ? Math.round(edge.model * 2) / 2 : edge.model), "nowrap");
+    cell(row, pct(edge.probability), "num good");
+    cell(row, "").append(pill(edge.tier, edge.tier));
+    return row;
+  }));
+  empty.hidden = flagged.length > 0;
+  section.querySelector(".table-wrap").hidden = flagged.length === 0;
+}
+
+function renderRisk(analysis) {
+  const rows = (analysis && Array.isArray(analysis.team_risk)) ? analysis.team_risk : [];
+  if (!rows.length) return;
+  document.getElementById("risk").hidden = false;
+  for (const [tone, id, order] of [["regression risk", "regression-rows", 1], ["progression", "progression-rows", -1]]) {
+    const picked = rows.filter((r) => r.tone === tone).sort((a, b) => order * (b.luck_z - a.luck_z)).slice(0, 15);
+    document.getElementById(id).replaceChildren(...picked.map((r) => {
+      const row = document.createElement("tr");
+      cell(row, r.team, "strong");
+      cell(row, String(r.games), "num");
+      cell(row, signed(r.results_net), "num");
+      cell(row, signed(r.sustainable_net), "num");
+      cell(row, signed(r.luck_z, 2), `num ${r.luck_z > 0 ? "bad" : "good"}`);
+      const mv = r.market_vs_model;
+      const agrees = finite(mv) && ((tone === "regression risk" && mv > 0) || (tone === "progression" && mv < 0));
+      cell(row, finite(mv) ? signed(mv) : "", `num ${agrees ? (tone === "progression" ? "good" : "bad") : "muted"}`);
+      return row;
+    }));
+  }
+}
+
+function renderRecord(analysis) {
+  const rows = (analysis && Array.isArray(analysis.edge_record)) ? analysis.edge_record : [];
+  if (!rows.length) return;
+  document.getElementById("record").hidden = false;
+  const grouped = new Map();
+  for (const r of rows) {
+    const key = `${r.market}|${r.tier}`;
+    if (!grouped.has(key)) grouped.set(key, { market: r.market, tier: r.tier, seasons: {} });
+    grouped.get(key).seasons[r.season] = r;
+  }
+  document.getElementById("record-rows").replaceChildren(...[...grouped.values()].map((g) => {
+    const row = document.createElement("tr");
+    cell(row, g.market);
+    cell(row, "").append(pill(g.tier, g.tier));
+    for (const season of [2024, 2025, 2026]) {
+      const r = g.seasons[season];
+      cell(row, r ? `${pct(r.win_pct)} (${r.bets.toLocaleString("en-US")})` : "", r ? `num ${r.win_pct >= 0.524 ? "good" : "bad"}` : "num");
+    }
+    return row;
+  }));
 }
 
 async function load() {
@@ -66,7 +200,9 @@ async function load() {
   document.getElementById("training-date").textContent = dateFormat.format(new Date(board.data_through_utc));
   const generated = new Date(board.generated_at_utc);
   document.getElementById("generated-time").textContent = `${dateFormat.format(generated)} · ${timeFormat.format(generated)}`;
+  document.getElementById("model-name").textContent = board.method;
   document.getElementById("method-note").textContent = board.method_note;
+  document.getElementById("edge-policy").textContent = board.analysis?.edge_policy || "";
 
   const dates = [...new Set([board.as_of_date, ...board.games.map(game => game.slate_date)])].sort();
   dateSelect.replaceChildren(...dates.map(date => new Option(slateLabel(date), date)));
@@ -77,14 +213,19 @@ async function load() {
     time: byTip,
     margin: (first, second) => Math.abs(second.model_margin) - Math.abs(first.model_margin) || byTip(first, second),
     total: (first, second) => second.projected_total - first.projected_total || byTip(first, second),
+    edge: (first, second) => bestEdge(second) - bestEdge(first) || byTip(first, second),
   };
+  const hasEdges = board.games.some((game) => game.edges);
+  document.getElementById("weak-lines").hidden = !hasEdges;
 
   function showSlate() {
     const query = search.value.trim().toLowerCase();
-    const selectedGames = board.games.filter(game => game.slate_date === dateSelect.value &&
+    const slateGames = board.games.filter(game => game.slate_date === dateSelect.value);
+    const selectedGames = slateGames.filter(game =>
       [game.away, game.away_name, game.home, game.home_name].some(name => name.toLowerCase().includes(query)));
     selectedGames.sort(orders[sort.value]);
     games.replaceChildren(...selectedGames.map(renderGame));
+    if (hasEdges) renderWeakLines(selectedGames);
 
     if (selectedGames.length) {
       status.textContent = `${selectedGames.length} ${selectedGames.length === 1 ? "matchup" : "matchups"} · All times Eastern`;
@@ -93,6 +234,8 @@ async function load() {
     }
   }
 
+  renderRisk(board.analysis);
+  renderRecord(board.analysis);
   showSlate();
   dateSelect.addEventListener("change", showSlate);
   search.addEventListener("input", showSlate);

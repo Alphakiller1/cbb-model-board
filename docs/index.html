@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Chase Analytics men's college basketball score projections by slate date.">
+  <meta name="description" content="Chase Analytics men's college basketball model: projections against DraftKings lines, opener edges, and regression and progression risk.">
   <title>CBB Model Dashboard | Chase Analytics</title>
   <link rel="stylesheet" href="./dashboard.css">
   <script type="module" src="./dashboard.js"></script>
@@ -23,12 +23,13 @@
       <div>
         <p class="eyebrow">Men’s Division I · Score model</p>
         <h1 id="page-title">CBB Model<br class="hero-break"> Dashboard</h1>
-        <p class="hero-description">Projected scores, totals and margins for the upcoming college basketball slate.</p>
+        <p class="hero-description">Projected scores from the model's own ratings, set against DraftKings lines. Weak lines are flagged while they sit at the opener, and every team is graded for regression and progression risk.</p>
       </div>
       <dl class="snapshot">
         <div><dt>Model snapshot</dt><dd id="snapshot-date">—</dd></div>
         <div><dt>Training data through</dt><dd id="training-date">—</dd></div>
         <div><dt>Forecasts generated</dt><dd id="generated-time">—</dd></div>
+        <div><dt>Model</dt><dd id="model-name">—</dd></div>
       </dl>
     </section>
 
@@ -52,16 +53,78 @@
             <option value="time">Tip time</option>
             <option value="margin">Largest model margin</option>
             <option value="total">Highest projected total</option>
+            <option value="edge">Strongest opener edge</option>
           </select>
         </label>
       </fieldset>
 
+      <section class="panel" id="weak-lines" aria-labelledby="weak-title" hidden>
+        <div class="panel-heading">
+          <h3 id="weak-title">Weak lines at the opener</h3>
+          <p class="panel-note">Calibrated chance the bet beats the DraftKings opener. Lean ≥ 54%, strong ≥ 56%, max ≥ 58%. A flag clears once the line moves.</p>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th scope="col" class="col-tip">Tip</th><th scope="col">Game</th><th scope="col">Bet</th><th scope="col">Opener</th><th scope="col">Model</th><th scope="col" class="num">Win prob</th><th scope="col">Tier</th></tr></thead>
+            <tbody id="weak-rows"></tbody>
+          </table>
+        </div>
+        <p class="panel-empty" id="weak-empty" hidden>No line on this date is still at its opener with a flagged edge. Openers usually post the evening before.</p>
+      </section>
+
       <div class="games" id="games"></div>
+    </section>
+
+    <section class="board" id="risk" aria-labelledby="risk-title" hidden>
+      <div class="board-heading">
+        <h2 id="risk-title">Regression and progression</h2>
+        <p class="panel-note">Results is the opponent-adjusted margin per 100 possessions from actual points. Sustainable removes half of each game's three-point and free-throw make luck. Luck z is the gap in units of its sampling noise. Market vs model is the average of the DraftKings line minus the model's projection in the team's games, in points.</p>
+      </div>
+      <div class="risk-grid">
+        <div class="panel">
+          <h3>Regression risk</h3>
+          <p class="panel-note">Results ahead of the process. Expect the scoring margin to fall.</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th scope="col">Team</th><th scope="col" class="num">G</th><th scope="col" class="num">Results</th><th scope="col" class="num">Sustainable</th><th scope="col" class="num">Luck z</th><th scope="col" class="num">Market vs model</th></tr></thead>
+              <tbody id="regression-rows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Progression</h3>
+          <p class="panel-note">Process ahead of the results. Expect the scoring margin to rise.</p>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr><th scope="col">Team</th><th scope="col" class="num">G</th><th scope="col" class="num">Results</th><th scope="col" class="num">Sustainable</th><th scope="col" class="num">Luck z</th><th scope="col" class="num">Market vs model</th></tr></thead>
+              <tbody id="progression-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="board" id="record" aria-labelledby="record-title" hidden>
+      <div class="board-heading">
+        <h2 id="record-title">How the opener edges held up</h2>
+        <p class="panel-note">Picks graded on games the model never saw. Tiers were set on 2024 and 2025; 2026 is the untouched holdout. Break-even at −110 is 52.4%. Spreads against the closing line are listed to show why moved lines get no flag.</p>
+      </div>
+      <div class="panel">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th scope="col">Line</th><th scope="col">Tier</th><th scope="col" class="num">2024</th><th scope="col" class="num">2025</th><th scope="col" class="num">2026 holdout</th></tr></thead>
+            <tbody id="record-rows"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
   </main>
 
   <footer class="shell site-footer">
-    <p id="method-note">Chase Analytics college basketball score model</p>
+    <div class="footer-notes">
+      <p id="method-note">Chase Analytics college basketball score model</p>
+      <p id="edge-policy"></p>
+    </div>
     <a href="https://github.com/Alphakiller1/cbb-model-board">Published score feed <span aria-hidden="true">↗</span></a>
   </footer>
 
@@ -85,6 +148,11 @@
         <div><dt>Projected total</dt><dd class="total"></dd></div>
         <div><dt>Model margin</dt><dd class="margin"></dd></div>
       </dl>
+      <dl class="lines" hidden>
+        <div><dt>Spread</dt><dd><span class="line-market"></span><span class="line-model"></span></dd></div>
+        <div><dt>Total</dt><dd><span class="total-market"></span><span class="total-model"></span></dd></div>
+      </dl>
+      <p class="edge-flags"></p>
       <a class="matchup-link">Explore matchup <span aria-hidden="true">↗</span></a>
     </article>
   </template>
