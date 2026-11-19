@@ -1,0 +1,18 @@
+name: Validate dashboard refresh
+on:
+  push:
+    paths: ['docs/**', 'tests/**', 'package.json', '.github/workflows/validate.yml']
+  pull_request:
+    paths: ['docs/**', 'tests/**', 'package.json', '.github/workflows/validate.yml']
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm test
+      - run: node --check docs/dashboard.js
