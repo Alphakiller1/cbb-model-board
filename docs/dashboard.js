@@ -1,3 +1,5 @@
+import { selectedDate, startFeedRefresh } from "./feed-refresh.js";
+
 const feedUrl = "https://raw.githubusercontent.com/Alphakiller1/cbb-model-board/main/board.json";
 const eastern = "America/New_York";
 const slateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "full", timeZone: "UTC" });
@@ -147,8 +149,8 @@ function renderWeakLines(slateGames) {
 
 function renderRisk(analysis) {
   const rows = (analysis && Array.isArray(analysis.team_risk)) ? analysis.team_risk : [];
+  document.getElementById("risk").hidden = !rows.length;
   if (!rows.length) return;
-  document.getElementById("risk").hidden = false;
   for (const [tone, id, order] of [["regression risk", "regression-rows", 1], ["progression", "progression-rows", -1]]) {
     const picked = rows.filter((r) => r.tone === tone).sort((a, b) => order * (b.luck_z - a.luck_z)).slice(0, 15);
     document.getElementById(id).replaceChildren(...picked.map((r) => {
@@ -168,8 +170,8 @@ function renderRisk(analysis) {
 
 function renderRecord(analysis) {
   const rows = (analysis && Array.isArray(analysis.edge_record)) ? analysis.edge_record : [];
+  document.getElementById("record").hidden = !rows.length;
   if (!rows.length) return;
-  document.getElementById("record").hidden = false;
   const grouped = new Map();
   for (const r of rows) {
     const key = `${r.market}|${r.tier}`;
@@ -188,14 +190,21 @@ function renderRecord(analysis) {
   }));
 }
 
-async function load() {
-  const response = await fetch(feedUrl, { cache: "no-cache", credentials: "omit" });
+async function fetchBoard() {
+  const url = new URL(feedUrl);
+  // A five-minute cache key also avoids stale intermediary raw-content caches.
+  url.searchParams.set("refresh", String(Math.floor(Date.now() / 300_000)));
+  const response = await fetch(url, { cache: "no-store", credentials: "omit", signal: AbortSignal.timeout(20_000) });
   if (!response.ok) throw new Error(`Score feed returned ${response.status}`);
   const { board } = await response.json();
   if (board?.schema !== "chase-board/1" || board.sport !== "cbb" || !Array.isArray(board.games)) {
     throw new Error("Unexpected score feed format");
   }
+  return board;
+}
 
+let showSlate = () => {};
+function renderBoard(board, previous) {
   document.getElementById("snapshot-date").textContent = dateFormat.format(new Date(`${board.as_of_date}T12:00:00Z`));
   document.getElementById("training-date").textContent = dateFormat.format(new Date(board.data_through_utc));
   const generated = new Date(board.generated_at_utc);
@@ -205,8 +214,9 @@ async function load() {
   document.getElementById("edge-policy").textContent = board.analysis?.edge_policy || "";
 
   const dates = [...new Set([board.as_of_date, ...board.games.map(game => game.slate_date)])].sort();
+  const nextDate = selectedDate(dateSelect.value, previous?.as_of_date, board.as_of_date, dates);
   dateSelect.replaceChildren(...dates.map(date => new Option(slateLabel(date), date)));
-  dateSelect.value = board.as_of_date;
+  dateSelect.value = nextDate;
 
   const byTip = (first, second) => Date.parse(first.kickoff_utc) - Date.parse(second.kickoff_utc);
   const orders = {
@@ -218,7 +228,7 @@ async function load() {
   const hasEdges = board.games.some((game) => game.edges);
   document.getElementById("weak-lines").hidden = !hasEdges;
 
-  function showSlate() {
+  showSlate = () => {
     const query = search.value.trim().toLowerCase();
     const slateGames = board.games.filter(game => game.slate_date === dateSelect.value);
     const selectedGames = slateGames.filter(game =>
@@ -232,18 +242,36 @@ async function load() {
     } else {
       status.textContent = query ? "No teams match that search." : "No published projections for this date.";
     }
-  }
+  };
 
   renderRisk(board.analysis);
   renderRecord(board.analysis);
   showSlate();
-  dateSelect.addEventListener("change", showSlate);
-  search.addEventListener("input", showSlate);
-  sort.addEventListener("change", showSlate);
   filters.disabled = false;
 }
 
-load().catch(error => {
-  console.error(error);
-  status.textContent = "The score feed is unavailable. Reload the page to try again.";
+dateSelect.addEventListener("change", () => showSlate());
+search.addEventListener("input", () => showSlate());
+sort.addEventListener("change", () => showSlate());
+
+const refreshStatus = document.getElementById("refresh-status");
+const refresher = startFeedRefresh({
+  fetchBoard, render: renderBoard,
+  report({ board, checkedAt, error, stale }) {
+    refreshStatus.classList.toggle("bad", Boolean(error) || stale);
+    if (error) {
+      refreshStatus.textContent = board
+        ? "Refresh failed. Showing the last loaded forecasts; retrying automatically every 5 minutes."
+        : "The score feed is unavailable. Retrying automatically every 5 minutes.";
+      if (!board) status.textContent = "Waiting for the published score feed…";
+    } else if (stale) {
+      refreshStatus.textContent = "Forecasts are behind the current refresh cycle. Showing the last published board; checking again every 5 minutes.";
+    } else {
+      refreshStatus.textContent = `Auto-refresh on · Checked ${timeFormat.format(checkedAt)} · Next check within 5 minutes`;
+    }
+  },
 });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") void refresher.refresh();
+});
+window.addEventListener("focus", () => { void refresher.refresh(); });
