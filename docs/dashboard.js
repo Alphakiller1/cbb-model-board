@@ -1,6 +1,6 @@
 import { selectedDate, startFeedRefresh } from "./feed-refresh.js";
 
-const feedUrl = "https://raw.githubusercontent.com/Alphakiller1/cbb-model-board/main/board.json";
+const feedUrl = new URL("./board.json", import.meta.url);
 const eastern = "America/New_York";
 const slateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "full", timeZone: "UTC" });
 const dateFormat = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: eastern });
@@ -192,8 +192,8 @@ function renderRecord(analysis) {
 
 async function fetchBoard() {
   const url = new URL(feedUrl);
-  // A five-minute cache key also avoids stale intermediary raw-content caches.
-  url.searchParams.set("refresh", String(Math.floor(Date.now() / 300_000)));
+  // Check the feed deployed with this page, including after a manual reload.
+  url.searchParams.set("refresh", String(Date.now()));
   const response = await fetch(url, { cache: "no-store", credentials: "omit", signal: AbortSignal.timeout(20_000) });
   if (!response.ok) throw new Error(`Score feed returned ${response.status}`);
   const { board } = await response.json();
