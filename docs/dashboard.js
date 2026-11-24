@@ -190,6 +190,42 @@ function renderRecord(analysis) {
   }));
 }
 
+function record(r) {
+  const n = r.won + r.lost;
+  return n ? `${r.won}–${r.lost} (${pct(r.won / n)})` : "—";
+}
+
+function renderForward(analysis) {
+  const f = analysis && analysis.forward_record;
+  const section = document.getElementById("forward");
+  section.hidden = !(f && f.games);
+  if (section.hidden) return;
+  const lines = [["spread_close", "Spreads vs close"], ["spread_open", "Spreads vs opener"],
+    ["total_close", "Totals vs close"], ["total_open", "Totals vs opener"]];
+  document.getElementById("forward-rows").replaceChildren(...lines.filter(([key]) => f[key]).map(([key, name]) => {
+    const r = f[key];
+    const row = document.createElement("tr");
+    cell(row, name);
+    cell(row, r.games.toLocaleString("en-US"), "num");
+    cell(row, r.model_mae.toFixed(2), `num ${r.model_mae <= r.dk_mae ? "good" : "muted"}`);
+    cell(row, r.dk_mae.toFixed(2), "num");
+    const n = r.won + r.lost;
+    cell(row, record(r), `num ${n && r.won / n >= 0.524 ? "good" : "muted"}`);
+    return row;
+  }));
+  const tiers = f.opener_tiers || {};
+  document.getElementById("forward-tiers").replaceChildren(...["lean", "strong", "max"].map((tier) => {
+    const row = document.createElement("tr");
+    cell(row, "").append(pill(tier, tier));
+    for (const kind of ["spread", "total"]) {
+      const r = (tiers[kind] || {})[tier];
+      const n = r ? r.won + r.lost : 0;
+      cell(row, r ? record(r) : "—", `num ${n && r.won / n >= 0.524 ? "good" : n ? "bad" : "muted"}`);
+    }
+    return row;
+  }));
+}
+
 async function fetchBoard() {
   const url = new URL(feedUrl);
   // Check the feed deployed with this page, including after a manual reload.
@@ -245,6 +281,7 @@ function renderBoard(board, previous) {
   };
 
   renderRisk(board.analysis);
+  renderForward(board.analysis);
   renderRecord(board.analysis);
   showSlate();
   filters.disabled = false;

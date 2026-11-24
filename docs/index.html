@@ -106,6 +106,27 @@
       </div>
     </section>
 
+    <section class="board" id="forward" aria-labelledby="forward-title" hidden>
+      <div class="board-heading">
+        <h2 id="forward-title">This season so far</h2>
+        <p class="panel-note">Every completed game this season, projected only from games before it. Error is the average miss in points on the same DraftKings-priced games. The side record counts the model's side of each line; tiers are the opener flags as they would have fired.</p>
+      </div>
+      <div class="panel">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th scope="col">Line</th><th scope="col" class="num">Games</th><th scope="col" class="num">Model error</th><th scope="col" class="num">DraftKings error</th><th scope="col" class="num">Model side</th></tr></thead>
+            <tbody id="forward-rows"></tbody>
+          </table>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th scope="col">Opener tier</th><th scope="col" class="num">Spreads</th><th scope="col" class="num">Totals</th></tr></thead>
+            <tbody id="forward-tiers"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <section class="board" id="record" aria-labelledby="record-title" hidden>
       <div class="board-heading">
         <h2 id="record-title">How the opener edges held up</h2>
